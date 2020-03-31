@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<!-- HTML -->
+	<title>30 Seconds</title>
+
+	<!-- Meta -->
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+
+	<!-- JavaScript -->
+	<script src='/static/js/jquery.min.js'></script>
+	<script src='/static/js/color-hash.js'></script>
+	<script src='/static/js/websocket.js'></script>
+
+	<!-- CSS -->
+	<link rel="stylesheet" href="/static/css/style.css">
+
+	<!-- Fonts -->
+	 <link href="https://fonts.googleapis.com/css2?family=Lekton&display=swap" rel="stylesheet"> 
+</head>
+<body>
+	<div id="snackbar"></div>
+	<h1>30 seconds</h1>
+	<h1 id="loader">loading...</h1>
+	<div id="group-container" style="display: none">
+		<form action="#" onsubmit="return false;">
+			<input type="text" placeholder="group name here..." id="group-id" />
+			<input type="submit" value="join group" id="join-group" />
+		</form>
+	</div>
+	<div id="group-info" style="display: none">
+		<h2 id="group-name"></h2>
+		<ul id="group-members">
+		</ul>
+		<input type="submit" value="start game" class="start-game" disabled />
+		<input type="submit" value="leave group" id="leave-group" />
+		<hr/>
+		<table class="fixed_header" id="chat-messages">
+			<thead>
+				<tr>
+					<th>chat messages</th>
+				</tr>
+			</thead>
+			<tbody id='incoming-messages'>
+
+			</tbody>
+		</table>
+		<form id='chat' action="#" onsubmit="return false;">
+			<input type="text" required="required" placeholder="message..." id="chat-message" />
+			<input type="submit" value="send" id="send-message">
+		</form>
+		<div id="game-container" style="display: none">
+			<h2>teams</h2>
+			<table>
+				<tbody class="team-list">
+				</tbody>
+			</table>
+			<table>
+				<thead>
+					<th>word</th>
+				</thead>
+				<tbody class="word-list">
+				</tbody>
+			</table>
+		</div>
+	</div>
+	<noscript>this website requires javascript to run! please enable it to play.</noscript>
+</body>
+</html>

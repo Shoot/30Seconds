@@ -1,0 +1,11 @@
+https://en.wikipedia.org/wiki/List_of_the_largest_fast_food_restaurant_chains 			< 25
+https://en.wikipedia.org/wiki/List_of_highest-grossing_films							< 50
+https://www.imdb.com/chart/top 															< 25
+https://en.wikipedia.org/wiki/List_of_best-selling_music_artists						< all
+https://en.wikipedia.org/wiki/List_of_number-one_artists_on_the_Billboard_Artist_100 	< all
+https://www.worldometers.info/geography/alphabetical-list-of-countries/ 				< all
+
+Remove all where there are:
+- More than 3 words
+- Symbols that aren't an apostrophe
+\- Remove dots and commas
