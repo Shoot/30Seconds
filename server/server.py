@@ -31,6 +31,32 @@ class Round:
 		self.answerer = None
 		self.score = 0
 
+	@property
+	def is_finished(self):
+		count = 0
+		for word in self.words:
+			if word.scored:
+				count += 1
+		return count == 5
+
+	async def answer(self, word):
+		for index, round_word in enumerate(self.words):
+			word_string = round_word.word
+			if round_word.word != word:
+				continue
+
+			round_word.scored = True
+			await self.game.group.send(utilities.message(1, 'CORRECT_WORD', {
+				'word': word,
+				'index': index
+			}))
+
+		if self.is_finished:
+			await self.end()
+
+		return False
+		
+
 	async def start(self):
 		"""
 		Start the round
@@ -65,7 +91,7 @@ class Round:
 		# is marked with a bool, whether or not it was correctly guessed
 		# or not
 		word_score = []
-		for word in game.rounds[-1].words:
+		for word in self.words:
 			word_score.append([word.word, word.scored])
 
 		await self.game.group.send(utilities.message(1, 'ROUND_END', {
@@ -82,7 +108,7 @@ class Game:
 
 		:param group: the group that the game belongs to
 		"""
-		self.in_progress = False
+		self.in_game = False
 		self.group = group
 		self.teams = []
 		self.rounds = []
@@ -128,7 +154,7 @@ class Game:
 		Start the game
 		"""
 		self.group.game = self
-		self.in_progress = True
+		self.in_game = True
 
 		self.teams = self.construct_teams()
 
@@ -143,7 +169,7 @@ class Game:
 		"""
 		End the game
 		"""
-
+		self.in_game = False
 
 class Group:
 	def __init__(self, gid, members):
@@ -163,7 +189,7 @@ class Group:
 		self.gid = gid
 		self.members = []
 
-		self.in_progress = False
+		self.in_game = False
 		self.game = Game(self)
 
 		games.append(self.game)
@@ -270,10 +296,10 @@ class Group:
 		if len(self.members) < 4 or len(self.members) % 2 != 0:
 			raise Exception('CANT_START')
 
-		if self.in_progress:
+		if self.in_game:
 			raise Exception('CANT_START')
 
-		self.in_progress = True
+		self.in_game = True
 
 		await self.game.start()
 
@@ -311,6 +337,17 @@ class User:
 		# Add user to the global users array, useful for tracking
 		users.append(self)
 
+	def as_safe_dict(self):
+		"""
+		Returns safe information about the user that can be
+		given to any user publicly
+		"""
+		return {
+			'group': (self.group.gid if self.group else None),
+			'name': self.name,
+			'uid': self.uid
+		}
+
 	@classmethod
 	async def register(cls, websocket):
 		"""
@@ -333,17 +370,6 @@ class User:
 			username = utilities.random_string(16)
 
 		return cls(websocket, group=None, name=username)
-
-	def as_safe_dict(self):
-		"""
-		Returns safe information about the user that can be
-		given to any user publicly
-		"""
-		return {
-			'group': (self.group.gid if self.group else None),
-			'name': self.name,
-			'uid': self.uid
-		}
 
 	async def unregister(self):
 		"""
@@ -438,18 +464,14 @@ class User:
 
 		# Check if the user is an answerer in a current game, then check if the word
 		# is one of the answers for the round
-		if self.group.game.in_progress:
+		if self.group.game.in_game:
 			current_round = self.group.game.rounds[-1]
 			if current_round.answerer == self and not current_round.finished:
 				for index, word in enumerate(current_round.words):
 					if word.word.lower().strip() != message.lower().strip():
 						continue
 
-					await self.group.send(utilities.message(1, 'CORRECT_WORD', {
-						'word': word.word,
-						'index': index
-					}))
-					word.scored = True
+					await current_round.answer(word.word)
 
 		# Save when we last sent a message for rate limiting
 		self.last_message = int(time.time())
@@ -505,10 +527,10 @@ class User:
 		Continually receive information from the user and process it
 		"""
 		while self.active:
-			try:
-				await self.process_data(await self.websocket.recv())
-			except Exception as e:
-				await self.websocket.send(utilities.message(0, str(e)))
+			#try:
+			await self.process_data(await self.websocket.recv())
+			#except Exception as e:
+			#	await self.websocket.send(utilities.message(0, str(e)))
 
 async def server(websocket, path):
 	log('New connection', websocket)
@@ -527,13 +549,11 @@ async def server(websocket, path):
 		log('Unregistered a user', websocket)
 
 async def game_controller():
-	# Logging format:
-	# [dd/mm/yyyy hh:mm] [group-id]: <message>
 	log('Started the controller')
 	while 1:
 		for game in games:
 			# Skip if game is finished/hasn't started
-			if not game.in_progress:
+			if not game.in_game:
 				continue
 
 			# Skip if the next action is still coming up
@@ -561,6 +581,8 @@ async def game_controller():
 		await asyncio.sleep(0.1)
 
 def log(message, data=None):
+	# Logging format:
+	# [dd/mm/yyyy hh:mm] [group-id]: <message>
 	if data is None:
 		extra_data = 'server'
 	elif isinstance(data, websockets.server.WebSocketServerProtocol):
