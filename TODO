@@ -2,3 +2,4 @@
 - Move each class to its own file
 - Run the web server through asyncio gather w/o blocking
 - Clean shutdown
+- Add endpoints to the README, installation, etc

@@ -13,18 +13,18 @@ var error_codes = {
 	'RATE_LIMIT': 'You are sending messages too quickly'
 }
 
-function show_snackbar ( text ) {
-	var snackbar = $( '#snackbar' );
+function show_snackbar(text) {
+	var snackbar = $('#snackbar');
 
-	snackbar.text( text );
-	snackbar.addClass( 'show' );
+	snackbar.text(text);
+	snackbar.addClass('show');
 
-	setTimeout( function( ) {
-		snackbar.removeClass( 'show' )
+	setTimeout(function() {
+		snackbar.removeClass('show')
 	}, 3000);
 }
 
-function initialize_websocket ( address, port ) {
+function initialize_websocket(address, port) {
 	let ws = new WebSocket('ws://' + address + ':' + port);
 
 	$('#group-members').on('click', '.name-form', function(e) {
@@ -274,11 +274,11 @@ $(document).ready(function() {
 	new ClipboardJS('.copy-invite');
 
 	if (searchParams.has('group')) {
-		initialize_websocket( 'localhost', '5000' );
+		initialize_websocket('localhost', '5000');
 	}
 
 	$('#tab-submit').click(function() {
-		initialize_websocket( 'localhost', '5000' );
+		initialize_websocket('localhost', '5000');
 	});
 });
 

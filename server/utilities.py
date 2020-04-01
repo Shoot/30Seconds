@@ -1,7 +1,11 @@
 import json
 import random
+import string
+import websockets
+from datetime import datetime
 
-from .constants import *
+from . import constants
+from . import group
 
 class Word:
 	def __init__(self, word):
@@ -22,7 +26,7 @@ def validate_string(string):
 		return False
 
 	for letter in string:
-		if letter not in VALID_CHARSET:
+		if letter not in constants.VALID_CHARSET:
 			return False
 
 	return True
@@ -46,3 +50,17 @@ def message(success, code, data=None):
 
 def get_random_word():
 	return Word(random.choice(words))
+
+def log(message, data=None):
+	# Logging format:
+	# [dd/mm/yyyy hh:mm] [group-id]: <message>
+	if data is None:
+		extra_data = 'server'
+	elif isinstance(data, websockets.server.WebSocketServerProtocol):
+		extra_data = str(data.remote_address[0]) + ':' + str(data.remote_address[1])
+	elif isinstance(data, group.Group):
+		extra_data = data.gid
+	else:
+		extra_data = type(data)
+
+	print(f"[{datetime.now().strftime('%d/%m/%y %H:%M:%S')}] [{extra_data}]: {message}")

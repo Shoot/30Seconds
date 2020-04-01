@@ -1,9 +1,8 @@
 import asyncio
-import logging
-import threading
 import websockets
 
-from server.server import server, game_controller
+from server.server import server
+from server.game_controller import game_controller
 
 loop = asyncio.get_event_loop()
 
@@ -16,5 +15,4 @@ try:
 	loop.run_until_complete(tasks)
 	loop.run_forever()
 finally:
-	""" do cleanup here """
 	loop.close()

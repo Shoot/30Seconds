@@ -1,0 +1,3 @@
+games = []
+groups = []
+users = []
