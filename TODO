@@ -1,0 +1,4 @@
+- Implement SQLAlchemy
+- Move each class to its own file
+- Run the web server through asyncio gather w/o blocking
+- Clean shutdown

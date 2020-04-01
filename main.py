@@ -16,4 +16,5 @@ try:
 	loop.run_until_complete(tasks)
 	loop.run_forever()
 finally:
+	""" do cleanup here """
 	loop.close()

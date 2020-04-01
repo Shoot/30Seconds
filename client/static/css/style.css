@@ -1,12 +1,57 @@
+/* Global edits */
 body {
+    margin: 0;
+    padding: 0;
+    color: #fff;
+    background-color: #1a1a1a;
     font-family: 'Lekton', sans-serif;
 }
 
-.user-line {
-    max-width: fit-content;
+/* Header */
+.title {
+	font-size: 70px;
+	text-align: center;
+}
+
+/* Connection */
+#connection {
+	text-align: center;
+}
+
+/* Landing */
+#landing form {
+	text-align: center;
+}
+
+/* Group landing */
+#group-header {
+	text-align: center;
+	line-height: 10px;
+}
+
+#group-header a {
+	color: #fff;
+	text-decoration: none;
+}
+
+#group-header a:hover {
+	text-decoration: underline;
+}
+
+.group-header {
+	font-size: 50px;
+	text-align: center;
 }
 
 /* Chat box */
+#chat {
+	text-align: center;
+}
+
+.status {
+	text-align: center;
+}
+
 table, th, td {
 	width: 250px;
 	max-width: 250px;
@@ -49,6 +94,20 @@ table, th, td {
 
 .correct {
 	background-color: green;
+}
+
+/* Footer */
+#footer {
+	left: 0;
+	bottom: 0;
+	width: 100%;
+	position: fixed;
+	text-align: center;
+}
+
+#footer a {
+	text-decoration: none;
+	color: #fff;
 }
 
 /* Anything related to the snackbar/notifier

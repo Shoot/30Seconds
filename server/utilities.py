@@ -8,7 +8,10 @@ class Word:
 		self.word = word
 		self.scored = False
 
-with open('server/words/countries.txt', 'r', encoding='utf-8') as file:
+	def __str__(self):
+		return self.word
+
+with open('server/words/word_list.txt', 'r', encoding='utf-8') as file:
 	words = file.read().split('\n')
 
 def random_string(length):
@@ -23,6 +26,9 @@ def validate_string(string):
 			return False
 
 	return True
+
+def sanitize_string(string):
+	return string.encode('utf-8', 'ignore').decode('utf-8').strip()
 
 def is_json(data):
 	try:

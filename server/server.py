@@ -29,20 +29,21 @@ class Round:
 		self.finished = False
 		self.questioner = None
 		self.answerer = None
-		self.score = 0
+
+	@property
+	def score(self):
+		score = 0
+		for word in self.words:
+			score += 1 if word.scored else 0
+		return score
 
 	@property
 	def is_finished(self):
-		count = 0
-		for word in self.words:
-			if word.scored:
-				count += 1
-		return count == 5
+		return self.score == 5
 
 	async def answer(self, word):
 		for index, round_word in enumerate(self.words):
-			word_string = round_word.word
-			if round_word.word != word:
+			if str(round_word) != word:
 				continue
 
 			round_word.scored = True
@@ -53,9 +54,6 @@ class Round:
 
 		if self.is_finished:
 			await self.end()
-
-		return False
-		
 
 	async def start(self):
 		"""
@@ -77,8 +75,10 @@ class Round:
 
 		# Send the words to the questioner
 		await self.questioner.send(utilities.message(1, 'QUESTIONER_START', {
-			'words': [x.word for x in self.words]
+			'words': [str(x) for x in self.words]
 		}))
+
+		await self.answerer.send(utilities.message(1, 'ANSWERER_START'))
 
 	async def end(self):
 		"""
@@ -92,7 +92,7 @@ class Round:
 		# or not
 		word_score = []
 		for word in self.words:
-			word_score.append([word.word, word.scored])
+			word_score.append([str(word), word.scored])
 
 		await self.game.group.send(utilities.message(1, 'ROUND_END', {
 			'words': word_score,
@@ -108,7 +108,7 @@ class Game:
 
 		:param group: the group that the game belongs to
 		"""
-		self.in_game = False
+		self.in_progress = False
 		self.group = group
 		self.teams = []
 		self.rounds = []
@@ -154,7 +154,7 @@ class Game:
 		Start the game
 		"""
 		self.group.game = self
-		self.in_game = True
+		self.in_progress = True
 
 		self.teams = self.construct_teams()
 
@@ -169,7 +169,7 @@ class Game:
 		"""
 		End the game
 		"""
-		self.in_game = False
+		self.in_progress = False
 
 class Group:
 	def __init__(self, gid, members):
@@ -196,14 +196,14 @@ class Group:
 		groups.append(self)
 
 	@classmethod
-	def get(cls, gid):
+	def register(cls, gid):
 		"""
 		Function to create a new group
 
 		:param gid 	: the ID of the group
 		"""
 		if not utilities.validate_string(gid):
-			return False
+			raise Exception('INVALID_STRING')
 
 		# If group already exists, return it
 		for group in groups:
@@ -212,6 +212,13 @@ class Group:
 
 		# Otherwise, make a new one
 		return cls(gid, [])
+
+	async def unregister(self):
+		await self.send(utilities.message(1, 'DELETE_GROUP'))
+		groups.remove(self)
+
+		if self.in_game:
+			games.remove(self.game)
 
 	async def add(self, member):
 		"""
@@ -263,7 +270,16 @@ class Group:
 		# Clean up, remove group from the list if there are no longer
 		# any members
 		if len(self.members) == 0:
-			groups.remove(self)
+			await self.unregister()
+
+	async def send(self, data):
+		"""
+		Send data to all members of the group
+
+		:param data: the data to send
+		"""
+		for member in self.members:
+			await member.websocket.send(data)
 
 	async def alert(self, change, member):
 		"""
@@ -302,15 +318,6 @@ class Group:
 		self.in_game = True
 
 		await self.game.start()
-
-	async def send(self, data):
-		"""
-		Send data to all members of the group
-
-		:param data: the data to send
-		"""
-		for member in self.members:
-			await member.websocket.send(data)
 
 class User:
 	def __init__(self, websocket, **kwargs):
@@ -380,7 +387,7 @@ class User:
 
 		users.remove(self)
 
-	async def join_group(self, gid):
+	async def join(self, gid):
 		"""
 		Try to join a group
 
@@ -392,14 +399,26 @@ class User:
 			if self.group.gid == gid:
 				return False
 
-		if not utilities.validate_string(gid):
+		if gid and not utilities.validate_string(gid):
 			return False
 
-		group = Group.get(gid)
+		# If no group is provided, create a new random one
+		if gid:
+			group = Group.register(gid)
+		else:
+			tries = 0
+			while 1:
+				if tries >= 5:
+					raise Exception('INVALID_GROUP')
+				gid = utilities.random_string(16)
+				group = Group.register(gid)
+				if len(group.members) == 0:
+					break
+				tries += 1
 
 		await group.add(self)
 
-	async def leave_group(self):
+	async def leave(self):
 		"""
 		Try to leave a group
 		"""
@@ -418,26 +437,26 @@ class User:
 		:param name : new name for the user
 		"""
 
-		# Skip if user already has the name
-		if name == self.name:
+		sanitized_name = utilities.sanitize_string(name)
+
+		if sanitized_name in {'', None}:
 			raise Exception('INVALID_NAME')
 
-		# Skip if the new name has invalid letters
-		if not utilities.validate_string(name):
+		if sanitized_name == self.name:
 			raise Exception('INVALID_NAME')
 
-		self.name = name
+		self.name = sanitized_name
 
 		# Make sure that other people in the user's group don't
 		# share the name
 		if self.group != None:
 			for member in self.group.members:
-				if member.name == name and member.uid != self.uid:
+				if member.name == sanitized_name and member.uid != self.uid:
 					raise Exception('TAKEN_NAME')
 
 			await self.group.update_user(self)
 
-	async def send_message(self, message):
+	async def message(self, message):
 		"""
 		Send a message to the user's group
 
@@ -449,29 +468,32 @@ class User:
 			raise Exception('NO_GROUP')
 
 		# Limit messages to less than 100 characters
-		if len(message) > 100:
+		if not (0 < len(message) < 100):
 			raise Exception('INVALID_MESSAGE')
 
 		# Limit the user to 1 message per 0.1 seconds
 		if self.last_message > int(time.time()) - 0.1:
 			raise Exception('RATE_LIMIT')
 
+		# Sanitize the user's input
+		sanitized_message = utilities.sanitize_string(message)
+
 		# Send the message to everyone in the group
 		await self.group.send(utilities.message(1, 'CHAT_MESSAGE', {
 			'user': self.as_safe_dict(),
-			'message': message
+			'message': sanitized_message
 		}))
 
 		# Check if the user is an answerer in a current game, then check if the word
 		# is one of the answers for the round
-		if self.group.game.in_game:
+		if self.group.game.in_progress:
 			current_round = self.group.game.rounds[-1]
 			if current_round.answerer == self and not current_round.finished:
 				for index, word in enumerate(current_round.words):
-					if word.word.lower().strip() != message.lower().strip():
+					if str(word).lower().strip() != sanitized_message.lower().strip():
 						continue
 
-					await current_round.answer(word.word)
+					await current_round.answer(str(word))
 
 		# Save when we last sent a message for rate limiting
 		self.last_message = int(time.time())
@@ -499,15 +521,15 @@ class User:
 
 		# Do the action the user wants to do
 		if action == 'JOIN_GROUP':
-			await self.join_group(data.get('group'))
+			await self.join(data.get('group'))
 		elif action == 'LEAVE_GROUP':
-			await self.leave_group()
+			await self.leave()
 		elif action == 'EDIT_USER':
 			await self.edit(name=data.get('name'))
 		elif action == 'GAME_START':
 			await self.group.start_game()
 		elif action == 'CHAT_MESSAGE':
-			await self.send_message(data.get('message'))
+			await self.message(data.get('message'))
 		elif action == 'CLOSE_CONNECTION':
 			self.active = 0
 
@@ -530,7 +552,7 @@ class User:
 			#try:
 			await self.process_data(await self.websocket.recv())
 			#except Exception as e:
-			#	await self.websocket.send(utilities.message(0, str(e)))
+			#	await self.send(utilities.message(0, str(e)))
 
 async def server(websocket, path):
 	log('New connection', websocket)
@@ -553,7 +575,7 @@ async def game_controller():
 	while 1:
 		for game in games:
 			# Skip if game is finished/hasn't started
-			if not game.in_game:
+			if not game.in_progress:
 				continue
 
 			# Skip if the next action is still coming up
