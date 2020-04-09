@@ -1,5 +1,12 @@
-- Implement SQLAlchemy
-- Move each class to its own file
-- Run the web server through asyncio gather w/o blocking
-- Clean shutdown
-- Add endpoints to the README, installation, etc
+[x] Move each class to its own file
+[ ] Run the web server through asyncio gather w/o blocking
+[ ] Clean shutdown
+[ ] Add endpoints to the README, installation, etc
+[ ] Custom word list
+[ ] Possibly remove `session` variable for user, never used
+	\- Add reconnection
+[ ] Sharding so that one server doesn't bear all of the load
+[x] Save logs to specific log folder
+[ ] Let users set the amount of rounds
+[ ] Swap team questioners/answerers
+[ ] Make one user the owner, who can then mute/kick/ban a certain user

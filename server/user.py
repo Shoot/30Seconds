@@ -1,40 +1,34 @@
-import time
+import json
+import logging
 
 from . import constants
-from . import group
+from . import exceptions
 from . import shared
 from . import utilities
+from .group import Group
+
+log = logging.getLogger(__name__)
 
 class User:
-	def __init__(self, websocket, **kwargs):
-		"""
-		Basic user object which stores information on them,
-		including their websocket, UIDs, and group/game information.
+	def __init__(self, websocket, name, group=None):
+		""" Basic user object which stores information on them, including their
+		websocket, UIDs, and group/game information.
 
 		:param websocket: websocket connection for the user
-		:param kwargs	: 	name 	-> the user's name
-							group 	-> group to join
+		:param name 	: the user's name
+		:param group 	: group to join
 		"""
 		self.websocket = websocket
-		self.name = kwargs.get('name')
-		self.group = kwargs.get('group')
+		self.name = name
+		self.group = group
 		self.session = utilities.random_string(32)
 		self.uid = utilities.random_string(32)
-
-		# Whether or not the websocket is active
 		self.active = 1
 
-		# The user's last sent message, used for rate limiting
-		self.last_message = 0
-
-		# Add user to the global users array, useful for tracking
 		shared.users.append(self)
 
 	def as_safe_dict(self):
-		"""
-		Returns safe information about the user that can be
-		given to any user publicly
-		"""
+		""" Returns safe information about the user that can be given to anyone """
 		return {
 			'group': (self.group.gid if self.group else None),
 			'name': self.name,
@@ -43,17 +37,19 @@ class User:
 
 	@classmethod
 	async def register(cls, websocket):
-		"""
-		Registers the websocket to a user
+		""" Registers the websocket to a user
 
 		:param websocket: websocket connection
 		:return User 	: the user's information
 		""" 
-		await websocket.send(utilities.message(1, 'CONNECT_START'))
+		await websocket.send(json.dumps({
+			's': 1, 
+			'c': 'CONNECT_START'
+		}))
 
 		user = utilities.is_json(await websocket.recv())
 		if not user:
-			return False
+			raise exceptions.ClientError('INVALID_JSON')
 
 		if user.get('d'):
 			username = user['d'].get('name')
@@ -65,147 +61,125 @@ class User:
 		return cls(websocket, group=None, name=username)
 
 	async def unregister(self):
-		"""
-		Unregister the user's object
-		"""
+		""" Unregister the user's object """
 		if self.group != None:
+			if self.group.in_game:
+				for team in self.group.game.teams:
+					if self in team:
+						self.group.game.teams.remove(team)
+						break
+
 			await self.group.remove(self)
 
 		shared.users.remove(self)
 
 	async def join(self, gid):
-		"""
-		Try to join a group
+		""" Try to join a group
 
-		:param gid 	: the ID of the group to join
+		:param gid: the ID of the group to join
 		"""
-
-		# Don't join if user is already in the group
 		if self.group != None:
 			if self.group.gid == gid:
-				return False
+				raise exceptions.ClientError('IN_GROUP')
 
 		if gid and not utilities.validate_string(gid):
-			return False
+			raise exceptions.ClientError('INVALID_STRING')
 
-		# If no group is provided, create a new random one
 		if gid:
-			target_group = group.Group.register(gid)
+			group = Group.register(gid)
 		else:
 			tries = 0
 			while 1:
 				if tries >= 5:
-					raise Exception('INVALID_GROUP')
+					raise exceptions.ClientError('INVALID_GROUP')
 				gid = utilities.random_string(16)
-				target_group = Group.register(gid)
-				if len(target_group.members) == 0:
+				group = Group.register(gid)
+				if len(group.members) == 0:
 					break
 				tries += 1
 
-		await target_group.add(self)
+		if group.in_game:
+			raise exceptions.ClientError('IN_GAME')
+
+		await group.add(self)
 
 	async def leave(self):
-		"""
-		Try to leave a group
-		"""
+		""" Try to leave a group """
 		if self.group == None:
-			return False
+			raise exceptions.ClientError('NO_GROUP')
 
 		await self.group.remove(self)
+
 		self.group = None
 
-		return True
-
 	async def edit(self, name=None):
-		"""
-		Edit a user's information, just name for now
+		""" Edit a user's information, just name for now
 
 		:param name : new name for the user
 		"""
-
-		sanitized_name = utilities.sanitize_string(name)
+		sanitized_name = utilities.sanitize_string(str(name))
 
 		if sanitized_name in {'', None}:
-			raise Exception('INVALID_NAME')
+			raise exceptions.ClientError('INVALID_NAME')
 
 		if sanitized_name == self.name:
-			raise Exception('INVALID_NAME')
+			raise exceptions.ClientError('INVALID_NAME')
+
+		if not 0 < len(sanitized_name) < 32:
+			raise exceptions.ClientError('INVALID_NAME')
 
 		self.name = sanitized_name
 
-		# Make sure that other people in the user's group don't
-		# share the name
 		if self.group != None:
 			for member in self.group.members:
 				if member.name == sanitized_name and member.uid != self.uid:
-					raise Exception('TAKEN_NAME')
+					raise exceptions.ClientError('TAKEN_NAME')
 
 			await self.group.update_user(self)
 
 	async def message(self, message):
-		"""
-		Send a message to the user's group
+		""" Send a chat message to the user's group
 
-		:param message 	: message to send
+		:param message: message to send
 		"""
-
-		# Skip if we have no group to send to
 		if not self.group:
-			raise Exception('NO_GROUP')
+			raise exceptions.ClientError('NO_GROUP')
 
-		# Limit messages to less than 100 characters
-		if not (0 < len(message) < 100):
-			raise Exception('INVALID_MESSAGE')
-
-		# Limit the user to 1 message per 0.1 seconds
-		if self.last_message > int(time.time()) - 0.1:
-			raise Exception('RATE_LIMIT')
-
-		# Sanitize the user's input
 		sanitized_message = utilities.sanitize_string(message)
 
-		# Send the message to everyone in the group
-		await self.group.send(utilities.message(1, 'CHAT_MESSAGE', {
-			'user': self.as_safe_dict(),
-			'message': sanitized_message
-		}))
+		if not (0 < len(sanitized_message) < 100):
+			raise exceptions.ClientError('INVALID_MESSAGE')
 
-		# Check if the user is an answerer in a current game, then check if the word
-		# is one of the answers for the round
 		if self.group.game.in_progress and len(self.group.game.rounds) > 0:
 			current_round = self.group.game.rounds[-1]
 			if current_round.answerer == self and not current_round.finished:
 				for index, word in enumerate(current_round.words):
-					if str(word).lower().strip() != sanitized_message.lower().strip():
-						continue
+					if word.lower().strip() == sanitized_message.lower().strip():
+						await current_round.answer(word)
+			elif current_round.questioner == self:
+				raise exceptions.ClientError('CANT_MESSAGE')
 
-					await current_round.answer(str(word))
-
-		# Save when we last sent a message for rate limiting
-		self.last_message = int(time.time())
+		await self.group.send(1, 'CHAT_MESSAGE', {
+			'user': self.as_safe_dict(),
+			'message': sanitized_message
+		})
 
 	async def process_data(self, received):
-		"""
-		Process the data received from the websocket
+		""" Process the data received from the websocket
 
-		:param received : data received from the websocket
+		:param received: data received
 		"""
-
-		# Validate that the received data is JSON,, then return it
-		# as JSON
 		received_json = utilities.is_json(received)
 
 		if not received_json:
-			raise Exception('INVALID_JSON')
+			raise exceptions.ClientError('INVALID_JSON')
 
-		action = received_json.get('c')
+		action = received_json.get('c').upper()
 		data = received_json.get('d')
 
-		# If data is not provided when we need it, throw an error
 		if not data and action not in constants.DATALESS:
-			raise Exception('NO_DATA')
+			raise exceptions.ClientError('NO_DATA')
 
-		# Do the action the user wants to do
 		if action == 'JOIN_GROUP':
 			await self.join(data.get('group'))
 		elif action == 'LEAVE_GROUP':
@@ -219,23 +193,29 @@ class User:
 		elif action == 'CLOSE_CONNECTION':
 			self.active = 0
 
-		return True
+		log.info('%s@%s: %s' % (
+			self.name,
+			self.group.gid if self.group else '',
+			action
+		))
 
-	async def send(self, data):
-		"""
-		Send data to the websocket
-		* Unnecessary but done for neatness, maybe remove?
+	async def send(self, success, code, data=None):
+		""" Send data to the websocket formatted
 
-		:param data : data to send
+		:param success	: whether or not the request succeeded
+		:param code		: action/error code
+		:param data 	: data to send
 		"""
-		await self.websocket.send(data)
+		await self.websocket.send(json.dumps({
+			's': success,
+			'c': code,
+			'd': data
+		}))
 
 	async def loop(self):
-		"""
-		Continually receive information from the user and process it
-		"""
+		""" Continually receive information from the user and process it """
 		while self.active:
 			try:
 				await self.process_data(await self.websocket.recv())
-			except Exception as e:
-				await self.send(utilities.message(0, str(e)))
+			except exceptions.ClientError as e:
+				await self.send(0, str(e))
